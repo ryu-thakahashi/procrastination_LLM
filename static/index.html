@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>先延ばし防止レポート</title>
+  <link rel="icon" type="image/svg+xml" href="/static/app-icon.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    * { font-family: 'Inter', sans-serif; }
+
+    body {
+      background: #f0f6ff;
+      min-height: 100vh;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(37, 99, 235, 0.06);
+    }
+
+    .input-field {
+      background: #f8faff;
+      border: 1px solid #bfdbfe;
+      color: #0f172a;
+      border-radius: 10px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .input-field::placeholder { color: #94a3b8; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.92;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* Progress steps */
+    .step-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #bfdbfe;
+      transition: all 0.4s ease;
+      flex-shrink: 0;
+    }
+
+    .step-dot.active {
+      background: #2563eb;
+      box-shadow: 0 0 10px rgba(37, 99, 235, 0.7);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    .step-dot.done {
+      background: #16a34a;
+      box-shadow: 0 0 8px rgba(22, 163, 74, 0.5);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 6px rgba(37, 99, 235, 0.5); }
+      50% { box-shadow: 0 0 16px rgba(37, 99, 235, 0.9); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in { animation: fadeIn 0.45s ease forwards; }
+
+    /* TOC */
+    .toc-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .toc-box .toc-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      color: #2563eb;
+      text-transform: uppercase;
+      margin-bottom: 0.6rem;
+    }
+
+    .toc-box ul {
+      list-style: none !important;
+      padding: 0;
+      margin: 0;
+    }
+
+    .toc-box ul li {
+      margin-bottom: 0.25rem;
+    }
+
+    .toc-box ul li a {
+      color: #1d4ed8;
+      font-size: 0.85rem;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .toc-box ul li a:hover { text-decoration: underline; }
+
+    .toc-box ul li.toc-sub a {
+      color: #3b82f6;
+      font-size: 0.8rem;
+      font-weight: 400;
+      padding-left: 1rem;
+    }
+
+    /* Report markdown */
+    .report-body h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #1d4ed8;
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid #bfdbfe;
+    }
+
+    .report-body h3 {
+      font-size: 0.975rem;
+      font-weight: 600;
+      color: #2563eb;
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .report-body p {
+      color: #334155;
+      line-height: 1.75;
+      margin-bottom: 0.75rem;
+    }
+
+    .report-body ul {
+      list-style-type: disc !important;
+      padding-left: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .report-body ul li {
+      color: #334155;
+      margin-bottom: 0.3rem;
+      line-height: 1.7;
+    }
+
+    /* Timeline list (ol のみ) */
+    .timeline-list {
+      list-style: none !important;
+      padding: 0;
+      margin: 0.5rem 0 1rem 0;
+      position: relative;
+    }
+
+    .timeline-list::before {
+      content: '';
+      position: absolute;
+      left: 13px;
+      top: 20px;
+      bottom: 20px;
+      width: 2px;
+      background: linear-gradient(to bottom, #2563eb, #bfdbfe);
+      border-radius: 1px;
+    }
+
+    .timeline-list li {
+      display: flex !important;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 6px 0;
+      position: relative;
+      color: #334155;
+      line-height: 1.6;
+      margin-bottom: 0 !important;
+    }
+
+    .timeline-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: white;
+      font-size: 0.7rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      z-index: 1;
+      box-shadow: 0 0 0 3px #eff6ff;
+    }
+
+    .timeline-text {
+      padding-top: 4px;
+      font-size: 0.9rem;
+    }
+
+    .report-body strong { color: #0f172a; font-weight: 700; }
+
+    .report-body code {
+      background: #eff6ff;
+      color: #2563eb;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+
+    /* Code block (the copyable prompt) */
+    .report-body pre {
+      position: relative;
+      background: #f8faff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      padding: 1rem 1rem 1rem 1rem;
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+
+    .report-body pre code {
+      background: none;
+      color: #1e3a5f;
+      padding: 0;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: block;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 0.6rem;
+      right: 0.6rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      line-height: 1.4;
+    }
+
+    .copy-btn:hover { background: #1d4ed8; }
+    .copy-btn.copied { background: #16a34a; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #bfdbfe; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="max-w-2xl mx-auto px-4 py-14">
+
+    <!-- Header -->
+    <div class="text-center mb-10">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-xs text-blue-600 font-medium mb-5">
+        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+        AI powered by Gemini
+      </div>
+      <h1 class="text-3xl font-bold text-slate-900 mb-2.5 tracking-tight">
+        先延ばし防止レポート
+      </h1>
+      <p class="text-slate-500 text-sm leading-relaxed">
+        先延ばしにしてしまうタスクを入力すると、<br />
+        あなたの背中を押すレポートをAIが生成します。
+      </p>
+    </div>
+
+    <!-- Input Card -->
+    <div class="card p-6 mb-5">
+      <div class="mb-4">
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">タスク名</label>
+        <input
+          id="taskName"
+          type="text"
+          placeholder="例：論文執筆、就活のES作成..."
+          class="input-field w-full px-4 py-2.5 text-sm"
+        />
+      </div>
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">タスクの説明</label>
+        <textarea
+          id="taskDesc"
+          rows="3"
+          placeholder="例：Social Networksに出す論文の執筆を先延ばしにしてしまう..."
+          class="input-field w-full px-4 py-2.5 text-sm resize-none"
+        ></textarea>
+        <p class="text-xs text-slate-400 mt-1">Ctrl + Enter でも送信できます</p>
+      </div>
+      <button
+        id="submitBtn"
+        onclick="generateReport()"
+        class="btn-primary w-full py-2.5"
+      >
+        レポートを生成する
+      </button>
+    </div>
+
+    <!-- Progress -->
+    <div id="progress" class="hidden card p-5 mb-5 fade-in">
+      <p class="text-xs text-blue-500 uppercase tracking-widest font-semibold mb-3.5">生成中</p>
+      <div class="space-y-2.5">
+        <div class="flex items-center gap-3">
+          <div id="dot-analyzing" class="step-dot"></div>
+          <span class="text-sm text-slate-500">タスク分析</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="dot-strategizing" class="step-dot"></div>
+          <span class="text-sm text-slate-500">先延ばし対策の立案</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="dot-reporting" class="step-dot"></div>
+          <span class="text-sm text-slate-500">レポート生成</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Report -->
+    <div id="reportCard" class="hidden card p-8 fade-in">
+      <div class="flex items-center gap-2 mb-5">
+        <div class="w-2 h-2 rounded-full bg-green-500"></div>
+        <span class="text-xs text-green-600 font-semibold uppercase tracking-widest">レポート完成</span>
+      </div>
+      <div id="reportContent" class="report-body"></div>
+    </div>
+
+    <!-- Error -->
+    <div id="errorCard" class="hidden card p-5 border-red-200 bg-red-50 fade-in">
+      <p class="text-red-500 text-sm" id="errorMsg"></p>
+    </div>
+
+  </div>
+
+  <script>
+    async function generateReport() {
+      const taskName = document.getElementById('taskName').value.trim();
+      const taskDesc = document.getElementById('taskDesc').value.trim();
+
+      if (!taskName || !taskDesc) {
+        showError('タスク名と説明を入力してください。');
+        return;
+      }
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = '生成中...';
+
+      hide('reportCard');
+      hide('errorCard');
+      show('progress');
+      resetDots();
+
+      try {
+        const response = await fetch('/api/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task_name: taskName, task_desc: taskDesc }),
+        });
+
+        if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            handleStep(JSON.parse(line.slice(6)));
+          }
+        }
+      } catch (e) {
+        showError(e.message || 'エラーが発生しました。');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'レポートを生成する';
+      }
+    }
+
+    function handleStep(data) {
+      const steps = ['analyzing', 'strategizing', 'reporting'];
+      const idx = steps.indexOf(data.step);
+
+      if (data.step === 'done') {
+        steps.forEach(s => setDot(`dot-${s}`, 'done'));
+        renderReport(data.report);
+        hide('progress');
+        return;
+      }
+
+      if (idx === -1) return;
+      for (let i = 0; i < idx; i++) setDot(`dot-${steps[i]}`, 'done');
+      setDot(`dot-${data.step}`, 'active');
+    }
+
+    function renderReport(markdown) {
+      const el = document.getElementById('reportContent');
+      el.innerHTML = marked.parse(markdown);
+
+      // 1. TOC を先頭に挿入
+      generateTOC(el);
+
+      // 2. ul をタイムライン形式に変換
+      convertToTimeline(el);
+
+      // 3. コードブロックにコピーボタンを追加
+      addCopyButtons(el);
+
+      // 4. "AI:" / "あなた:" を太字に
+      boldLabels(el);
+
+      show('reportCard');
+      document.getElementById('reportCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function generateTOC(container) {
+      const headings = container.querySelectorAll('h2, h3');
+      if (headings.length < 2) return;
+
+      const toc = document.createElement('div');
+      toc.className = 'toc-box';
+
+      const title = document.createElement('p');
+      title.className = 'toc-title';
+      title.textContent = '目次';
+      toc.appendChild(title);
+
+      const ul = document.createElement('ul');
+      headings.forEach((h, i) => {
+        const id = `heading-${i}`;
+        h.id = id;
+        const li = document.createElement('li');
+        if (h.tagName === 'H3') li.className = 'toc-sub';
+        const a = document.createElement('a');
+        a.href = `#${id}`;
+        a.textContent = h.textContent;
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+      toc.appendChild(ul);
+
+      container.insertBefore(toc, container.firstChild);
+    }
+
+    function addCopyButtons(container) {
+      container.querySelectorAll('pre').forEach(pre => {
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = 'コピー';
+        btn.onclick = async () => {
+          const code = pre.querySelector('code');
+          const text = code ? code.textContent : pre.textContent;
+          await navigator.clipboard.writeText(text);
+          btn.textContent = 'コピー済み ✓';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'コピー';
+            btn.classList.remove('copied');
+          }, 2000);
+        };
+        pre.appendChild(btn);
+      });
+    }
+
+    function convertToTimeline(container) {
+      container.querySelectorAll('.report-body ol').forEach(ol => {
+        ol.classList.add('timeline-list');
+        ol.querySelectorAll('li').forEach((li, i) => {
+          const inner = li.innerHTML;
+          li.innerHTML = `<span class="timeline-num">${i + 1}</span><span class="timeline-text">${inner}</span>`;
+        });
+      });
+    }
+
+    function boldLabels(container) {
+      container.querySelectorAll('li').forEach(li => {
+        li.innerHTML = li.innerHTML
+          .replace(/^(AI):/, '<strong>AI</strong>:')
+          .replace(/^(あなた):/, '<strong>あなた</strong>:');
+      });
+    }
+
+    function showError(msg) {
+      document.getElementById('errorMsg').textContent = msg;
+      show('errorCard');
+      hide('progress');
+    }
+
+    function show(id) { document.getElementById(id).classList.remove('hidden'); }
+    function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+    function setDot(id, state) {
+      const el = document.getElementById(id);
+      el.classList.remove('active', 'done');
+      if (state) el.classList.add(state);
+    }
+
+    function resetDots() {
+      ['analyzing', 'strategizing', 'reporting'].forEach(s => setDot(`dot-${s}`, ''));
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.ctrlKey) generateReport();
+    });
+  </script>
+</body>
+</html>
