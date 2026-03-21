@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.services.procrastination import analyze_task, generate_report, generate_task_strategy
+from services.procrastination import analyze_task, generate_report, generate_task_strategy
 
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
