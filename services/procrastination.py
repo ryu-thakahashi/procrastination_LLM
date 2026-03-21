@@ -8,7 +8,7 @@ from google import genai
 
 load_dotenv(find_dotenv())
 GEMINI_API = os.getenv("GOOGLE_API_KEY")
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 def get_gemini_response(contents: str) -> str:
