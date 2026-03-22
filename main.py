@@ -9,12 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-
 from services.procrastination import analyze_task, generate_report, generate_task_strategy
 
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
-
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="先延ばし防止レポート生成AI")
@@ -23,7 +21,12 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://procrastination-llm.onrender.com",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -36,49 +39,44 @@ class TaskRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    """トップページのHTMLを返す。"""
     with open(STATIC_DIR / "index.html", encoding="utf-8") as f:
         return f.read()
 
 
-def load_latest_report() -> str:
-    dirs = sorted(OUTPUT_DIR.glob("*/"), reverse=True)
-    for d in dirs:
-        report_file = d / "03_report.md"
-        if not report_file.exists():
-            return "# レポートが見つかりませんでした\n`output/` に `03_report.md` がありません。"
-
-        return report_file.read_text(encoding="utf-8").strip()
-
-
 @app.post("/api/report")
 async def create_report(request: TaskRequest):
+    """タスク情報をもとにレポートを生成し、Server-Sent Eventsで進捗と結果を返す。
+
+    Args:
+        request: タスク名とタスク説明を含むリクエスト。
+    """
+
     async def event_stream():
+        """レポート生成の進捗をSSEで逐次配信するジェネレータ。"""
         if USE_MOCK:
-            for step, msg in [
+            for step, message in [
                 ("analyzing", "タスクを分析しています..."),
                 ("strategizing", "先延ばし対策を考えています..."),
                 ("reporting", "レポートを作成しています..."),
             ]:
-                yield f"data: {json.dumps({'step': step, 'message': msg}, ensure_ascii=False)}\n\n"
+                yield _format_sse_event(step, message)
                 await asyncio.sleep(0.4)
-            report = load_latest_report()
+            report = _load_latest_report()
         else:
             save_dir = OUTPUT_DIR / time.strftime("%Y%m%d-%H%M%S")
 
-            msg = json.dumps({"step": "analyzing", "message": "タスクを分析しています..."}, ensure_ascii=False)
-            yield f"data: {msg}\n\n"
+            yield _format_sse_event("analyzing", "タスクを分析しています...")
             await asyncio.sleep(0)
 
             task_analysis = await asyncio.to_thread(analyze_task, request.task_name, request.task_desc, save_dir)
 
-            msg = json.dumps({"step": "strategizing", "message": "先延ばし対策を考えています..."}, ensure_ascii=False)
-            yield f"data: {msg}\n\n"
+            yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
             await asyncio.sleep(0)
 
             task_strategy = await asyncio.to_thread(generate_task_strategy, task_analysis, save_dir)
 
-            msg = json.dumps({"step": "reporting", "message": "レポートを作成しています..."}, ensure_ascii=False)
-            yield f"data: {msg}\n\n"
+            yield _format_sse_event("reporting", "レポートを作成しています...")
             await asyncio.sleep(0)
 
             report = await asyncio.to_thread(generate_report, task_strategy, save_dir)
@@ -86,3 +84,38 @@ async def create_report(request: TaskRequest):
         yield f"data: {json.dumps({'step': 'done', 'report': report}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _format_sse_event(step: str, message: str) -> str:
+    """Server-Sent Events形式のデータ文字列を生成する。
+
+    インライン化するとjson.dumpsとf文字列の結合で120字を超えるため関数化している。
+
+    Args:
+        step: 現在の処理ステップ名。
+        message: ユーザーに表示するメッセージ。
+
+    Returns:
+        SSE形式のデータ文字列。
+    """
+    payload = {"step": step, "message": message}
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _load_latest_report() -> str:
+    """最新のレポートファイルを読み込んで返す。
+
+    Returns:
+        最新レポートのテキスト。存在しない場合はエラーメッセージ。
+    """
+    dirs = sorted(OUTPUT_DIR.glob("*/"), reverse=True)
+    for d in dirs:
+        report_file = d / "03_report.md"
+        if report_file.exists():
+            text = report_file.read_text(encoding="utf-8").strip()
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            return text.strip()
+    return "# レポートが見つかりませんでした\n`output/` に `03_report.md` がありません。"
