@@ -13,19 +13,38 @@ _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API)
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
-def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None) -> str:
+def suggest_causes(task_name: str, task_desc: str) -> str:
+    """タスクの先延ばし原因をGeminiから取得し、生テキストで返す。
+
+    Args:
+        task_name: タスク名。
+        task_desc: タスクの説明。
+
+    Returns:
+        Geminiのレスポンス文字列（JSONテキスト）。
+    """
+    prompt = (
+        (PROMPTS_DIR / "suggest_causes.md").read_text(encoding="utf-8").format(task_name=task_name, task_desc=task_desc)
+    )
+    return _get_gemini_response(prompt)
+
+
+def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "") -> str:
     """タスクを分析してAIの応答を返す。
 
     Args:
         task_name: タスク名。
         task_desc: タスクの説明。
         save_dir: 結果の保存先ディレクトリ。Noneの場合は保存しない。
+        selected_cause: ユーザーが選択した先延ばし原因。空文字の場合は無視する。
 
     Returns:
         タスク分析結果のテキスト。
     """
     prompt = (
-        (PROMPTS_DIR / "analyze_task.md").read_text(encoding="utf-8").format(task_name=task_name, task_desc=task_desc)
+        (PROMPTS_DIR / "analyze_task.md")
+        .read_text(encoding="utf-8")
+        .format(task_name=task_name, task_desc=task_desc, selected_cause=selected_cause)
     )
     response = _get_gemini_response(prompt)
     _save_if_needed(response, save_dir, "01_task_analysis.md")
