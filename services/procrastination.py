@@ -3,6 +3,7 @@ from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 from google import genai
+from google.genai import types
 
 load_dotenv(find_dotenv())
 
@@ -11,6 +12,57 @@ GEMINI_MODEL = "gemini-2.5-flash"
 _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API)
 
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+_SPLIT_MARKERS: dict[str, str] = {
+    "suggest_causes": "## タスク情報",
+    "analyze_task": "## タスク情報",
+    "generate_task_strategy": "## タスク情報",
+    "generate_report": "## 入力データ",
+}
+
+_CACHE_CHAR_THRESHOLD = 2000
+
+_PROMPT_CACHES: dict[str, str | None] = {k: None for k in _SPLIT_MARKERS}
+
+
+def _split_prompt(prompt_key: str) -> tuple[str, str]:
+    """プロンプトファイルを静的部分と動的テンプレートに分割する。
+
+    Args:
+        prompt_key: プロンプトファイル名（拡張子なし）。
+
+    Returns:
+        (static_part, dynamic_template) のタプル。
+    """
+    text = (PROMPTS_DIR / f"{prompt_key}.md").read_text(encoding="utf-8")
+    marker = _SPLIT_MARKERS[prompt_key]
+    idx = text.find(marker)
+    if idx == -1:
+        return text, ""
+    return text[:idx].rstrip(), text[idx:]
+
+
+def initialize_caches() -> None:
+    """全プロンプトの静的部分をGeminiにキャッシュする。サーバー起動時に呼び出す。"""
+    for prompt_key in _PROMPT_CACHES:
+        static_part, _ = _split_prompt(prompt_key)
+        if len(static_part) < _CACHE_CHAR_THRESHOLD:
+            print(f"[cache] {prompt_key}: スキップ（{len(static_part)}文字、閾値未満）")
+            continue
+        try:
+            cache = _GEMINI_CLIENT.caches.create(
+                model=GEMINI_MODEL,
+                config=types.CreateCachedContentConfig(
+                    system_instruction=types.Content(
+                        parts=[types.Part.from_text(static_part)]
+                    ),
+                    ttl="86400s",
+                ),
+            )
+            _PROMPT_CACHES[prompt_key] = cache.name
+            print(f"[cache] {prompt_key}: キャッシュ作成 → {cache.name}")
+        except Exception as e:
+            print(f"[cache] {prompt_key}: 作成失敗 ({e})、フォールバックを使用")
 
 
 def suggest_causes(task_name: str, task_desc: str) -> str:
@@ -23,10 +75,9 @@ def suggest_causes(task_name: str, task_desc: str) -> str:
     Returns:
         Geminiのレスポンス文字列（JSONテキスト）。
     """
-    prompt = (
-        (PROMPTS_DIR / "suggest_causes.md").read_text(encoding="utf-8").format(task_name=task_name, task_desc=task_desc)
-    )
-    return _get_gemini_response(prompt)
+    _, tmpl = _split_prompt("suggest_causes")
+    dynamic = tmpl.format(task_name=task_name, task_desc=task_desc)
+    return _get_gemini_response_cached("suggest_causes", dynamic)
 
 
 def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "") -> str:
@@ -41,18 +92,49 @@ def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, s
     Returns:
         タスク分析結果のテキスト。
     """
-    prompt = (
-        (PROMPTS_DIR / "analyze_task.md")
-        .read_text(encoding="utf-8")
-        .format(task_name=task_name, task_desc=task_desc, selected_cause=selected_cause)
-    )
-    response = _get_gemini_response(prompt)
+    _, tmpl = _split_prompt("analyze_task")
+    dynamic = tmpl.format(task_name=task_name, task_desc=task_desc, selected_cause=selected_cause)
+    response = _get_gemini_response_cached("analyze_task", dynamic)
     _save_if_needed(response, save_dir, "01_task_analysis.md")
     return response
 
 
+def generate_task_strategy(task_info: str, save_dir: Path | None = None) -> str:
+    """タスク情報をもとに先延ばし対策を生成する。
+
+    Args:
+        task_info: タスク分析結果のテキスト。
+        save_dir: 結果の保存先ディレクトリ。Noneの場合は保存しない。
+
+    Returns:
+        先延ばし対策のテキスト。
+    """
+    _, tmpl = _split_prompt("generate_task_strategy")
+    dynamic = tmpl.format(task_info=task_info)
+    response = _get_gemini_response_cached("generate_task_strategy", dynamic)
+    _save_if_needed(response, save_dir, "02_task_strategy.md")
+    return response
+
+
+def generate_report(task_strategy: str, save_dir: Path | None = None) -> str:
+    """先延ばし対策をもとにレポートを生成する。
+
+    Args:
+        task_strategy: 先延ばし対策のテキスト。
+        save_dir: 結果の保存先ディレクトリ。Noneの場合は保存しない。
+
+    Returns:
+        生成されたレポートのテキスト。
+    """
+    _, tmpl = _split_prompt("generate_report")
+    dynamic = tmpl.format(task_strategy=task_strategy)
+    response = _get_gemini_response_cached("generate_report", dynamic)
+    _save_if_needed(response, save_dir, "03_report.md")
+    return response
+
+
 def _get_gemini_response(contents: str) -> str:
-    """Gemini APIにリクエストを送り、レスポンスを返す。
+    """Gemini APIにリクエストを送り、レスポンスを返す（キャッシュなし）。
 
     Args:
         contents: Geminiに送るプロンプト文字列。
@@ -65,6 +147,34 @@ def _get_gemini_response(contents: str) -> str:
         contents=contents,
     )
     return response.text
+
+
+def _get_gemini_response_cached(prompt_key: str, dynamic_content: str) -> str:
+    """キャッシュを利用してGeminiにリクエストする。キャッシュ未設定時はフォールバック。
+
+    Args:
+        prompt_key: プロンプトキー（_PROMPT_CACHES のキー）。
+        dynamic_content: ユーザー固有の動的コンテンツ。
+
+    Returns:
+        Geminiのレスポンステキスト。
+    """
+    cache_name = _PROMPT_CACHES.get(prompt_key)
+    if cache_name is None:
+        static_part, _ = _split_prompt(prompt_key)
+        return _get_gemini_response(static_part + "\n\n" + dynamic_content)
+    try:
+        response = _GEMINI_CLIENT.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=dynamic_content,
+            config=types.GenerateContentConfig(cached_content=cache_name),
+        )
+        return response.text
+    except Exception as e:
+        print(f"[cache] {prompt_key}: キャッシュヒット失敗 ({e})、フォールバック")
+        _PROMPT_CACHES[prompt_key] = None
+        static_part, _ = _split_prompt(prompt_key)
+        return _get_gemini_response(static_part + "\n\n" + dynamic_content)
 
 
 def _save_if_needed(text: str, save_dir: Path | None, filename: str) -> None:
@@ -80,35 +190,3 @@ def _save_if_needed(text: str, save_dir: Path | None, filename: str) -> None:
     save_path = save_dir / filename
     save_path.parent.mkdir(parents=True, exist_ok=True)
     save_path.write_text(text, encoding="utf-8")
-
-
-def generate_task_strategy(task_info: str, save_dir: Path | None = None) -> str:
-    """タスク情報をもとに先延ばし対策を生成する。
-
-    Args:
-        task_info: タスク分析結果のテキスト。
-        save_dir: 結果の保存先ディレクトリ。Noneの場合は保存しない。
-
-    Returns:
-        先延ばし対策のテキスト。
-    """
-    prompt = (PROMPTS_DIR / "generate_task_strategy.md").read_text(encoding="utf-8").format(task_info=task_info)
-    response = _get_gemini_response(prompt)
-    _save_if_needed(response, save_dir, "02_task_strategy.md")
-    return response
-
-
-def generate_report(task_strategy: str, save_dir: Path | None = None) -> str:
-    """先延ばし対策をもとにレポートを生成する。
-
-    Args:
-        task_strategy: 先延ばし対策のテキスト。
-        save_dir: 結果の保存先ディレクトリ。Noneの場合は保存しない。
-
-    Returns:
-        生成されたレポートのテキスト。
-    """
-    prompt = (PROMPTS_DIR / "generate_report.md").read_text(encoding="utf-8").format(task_strategy=task_strategy)
-    response = _get_gemini_response(prompt)
-    _save_if_needed(response, save_dir, "03_report.md")
-    return response

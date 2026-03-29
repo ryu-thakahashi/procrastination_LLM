@@ -6,14 +6,6 @@
 
 - `preventing_factors` の各値（task_expectations / task_value / feedback_time）は **20字以内** で記述すること。
 
-## タスク情報
-
-{{
-    "title": "{task_name}",
-    "description": "{task_desc}",
-    "selected_cause": "{selected_cause}",
-}}
-
 ## 例1
 
 ### 入力
@@ -60,4 +52,12 @@
         "できなかった時の損失が大きい": "タスク（e.g., 自己PR）が合否を分ける、最も重要な項目であると感じる",
         "フィードバックまでの時間が長い": "タスク（e.g., 自己PR）の完成まで時間がかかり、達成感を得にくい",
     }}
+}}
+
+## タスク情報
+
+{{
+    "title": "{task_name}",
+    "description": "{task_desc}",
+    "selected_cause": "{selected_cause}",
 }}

@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,13 +10,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from services.procrastination import analyze_task, generate_report, generate_task_strategy, suggest_causes
+from services.procrastination import analyze_task, generate_report, generate_task_strategy, initialize_caches, suggest_causes
 
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="先延ばし防止レポート生成AI")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """サーバー起動時にGeminiプロンプトキャッシュを初期化する。"""
+    if not USE_MOCK:
+        await asyncio.to_thread(initialize_caches)
+    yield
+
+
+app = FastAPI(title="先延ばし防止レポート生成AI", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
