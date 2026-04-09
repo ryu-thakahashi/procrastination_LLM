@@ -26,7 +26,6 @@
 
 {{
     "title": "論文執筆",
-    "description": "Social Networks に出す論文の執筆を先延ばしにしてしまう。",
 }}
 
 ### 出力
@@ -47,7 +46,6 @@
 
 {{
     "title": "就活のES作成",
-    "description": "サイバーエージェントに提出するESの作成を先延ばししてしまう。"
 }}
 
 ### 出力
@@ -66,5 +64,4 @@
 
 {{
     "title": "{task_name}",
-    "description": "{task_desc}",
 }}

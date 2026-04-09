@@ -43,21 +43,20 @@ def _split_prompt(prompt_key: str) -> tuple[str, str]:
 
 def initialize_caches() -> None:
     """全プロンプトの静的部分をGeminiにキャッシュする。サーバー起動時に呼び出す。"""
-    pass
+    print("[cache] google.genai ライブラリでのキャッシュ初期化をスキップ（フォールバックモード）")
 
 
-def suggest_causes(task_name: str, task_desc: str) -> str:
+def suggest_causes(task_name: str) -> str:
     """タスクの先延ばし原因をGeminiから取得し、生テキストで返す。
 
     Args:
         task_name: タスク名。
-        task_desc: タスクの説明。
 
     Returns:
         Geminiのレスポンス文字列（JSONテキスト）。
     """
     _, tmpl = _split_prompt("suggest_causes")
-    dynamic = tmpl.format(task_name=task_name, task_desc=task_desc)
+    dynamic = tmpl.format(task_name=task_name)
     return _get_gemini_response_cached("suggest_causes", dynamic)
 
 

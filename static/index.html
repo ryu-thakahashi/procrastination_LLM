@@ -353,7 +353,7 @@
 
     <!-- Input Card -->
     <div class="card p-6 mb-5">
-      <div class="mb-4">
+      <div class="mb-5">
         <label class="block text-sm font-semibold text-slate-700 mb-1.5">タスク名</label>
         <input
           id="taskName"
@@ -361,16 +361,6 @@
           placeholder="例：論文執筆、就活のES作成..."
           class="input-field w-full px-4 py-2.5 text-sm"
         />
-      </div>
-      <div class="mb-5">
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">タスクの説明</label>
-        <textarea
-          id="taskDesc"
-          rows="3"
-          placeholder="例：Social Networksに出す論文の執筆を先延ばしにしてしまう..."
-          class="input-field w-full px-4 py-2.5 text-sm resize-none"
-        ></textarea>
-        <p class="text-xs text-slate-400 mt-1">Ctrl + Enter でも送信できます</p>
       </div>
       <button
         id="submitBtn"
@@ -387,12 +377,35 @@
       <p class="text-xs text-slate-400 mb-4">あなたに最も当てはまる原因を選ぶと、より的確なレポートが生成されます。</p>
       <div id="causeList" class="space-y-2.5 mb-5"></div>
       <button
+        id="nextBtn"
+        onclick="showDescCard()"
+        class="btn-primary w-full py-2.5"
+        disabled
+      >
+        次へ：タスクを説明する
+      </button>
+    </div>
+
+    <!-- Task Description -->
+    <div id="descCard" class="hidden card p-6 mb-5 fade-in">
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5">タスクの説明</label>
+        <p class="text-xs text-slate-400 mb-2">原因を参考にしながら、先延ばしの状況を自由に記述してください。</p>
+        <textarea
+          id="taskDesc"
+          rows="4"
+          placeholder="例：締め切りが近いのに論文に手をつけられない。何から始めればいいかわからず..."
+          class="input-field w-full px-4 py-2.5 text-sm resize-none"
+        ></textarea>
+        <p class="text-xs text-slate-400 mt-1">Ctrl + Enter でも送信できます</p>
+      </div>
+      <button
         id="reportBtn"
         onclick="generateReport()"
         class="btn-primary w-full py-2.5"
         disabled
       >
-        この原因でレポートを作成する
+        レポートを作成する
       </button>
     </div>
 
@@ -436,10 +449,9 @@
 
     async function suggestCauses() {
       const taskName = document.getElementById('taskName').value.trim();
-      const taskDesc = document.getElementById('taskDesc').value.trim();
 
-      if (!taskName || !taskDesc) {
-        showError('タスク名と説明を入力してください。');
+      if (!taskName) {
+        showError('タスク名を入力してください。');
         return;
       }
 
@@ -448,6 +460,7 @@
       btn.textContent = '分析中...';
 
       hide('causeCard');
+      hide('descCard');
       hide('reportCard');
       hide('errorCard');
       selectedCause = '';
@@ -456,7 +469,7 @@
         const response = await fetch('/api/suggest-causes', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task_name: taskName, task_desc: taskDesc }),
+          body: JSON.stringify({ task_name: taskName }),
         });
 
         if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);
@@ -492,14 +505,20 @@
         card.addEventListener('click', () => selectCause(card, causeText));
         list.appendChild(card);
       });
-      document.getElementById('reportBtn').disabled = true;
+      document.getElementById('nextBtn').disabled = true;
     }
 
     function selectCause(card, cause) {
       document.querySelectorAll('.cause-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       selectedCause = cause;
-      document.getElementById('reportBtn').disabled = false;
+      document.getElementById('nextBtn').disabled = false;
+    }
+
+    function showDescCard() {
+      show('descCard');
+      document.getElementById('descCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('taskDesc').focus();
     }
 
     async function generateReport() {
@@ -508,6 +527,11 @@
 
       if (!selectedCause) {
         showError('原因を1つ選択してください。');
+        return;
+      }
+
+      if (!taskDesc) {
+        showError('タスクの説明を入力してください。');
         return;
       }
 
@@ -674,8 +698,28 @@
       ['analyzing', 'strategizing', 'reporting'].forEach(s => setDot(`dot-${s}`, ''));
     }
 
+    const taskDescEl = document.getElementById('taskDesc');
+    if (taskDescEl) {
+      taskDescEl.addEventListener('input', () => {
+        const reportBtn = document.getElementById('reportBtn');
+        if (reportBtn) {
+          reportBtn.disabled = !taskDescEl.value.trim();
+        }
+      });
+      taskDescEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.ctrlKey) generateReport();
+      });
+    }
+
     document.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && e.ctrlKey) suggestCauses();
+      if (e.key === 'Enter' && e.ctrlKey) {
+        const descCard = document.getElementById('descCard');
+        if (descCard && !descCard.classList.contains('hidden')) {
+          generateReport();
+        } else {
+          suggestCauses();
+        }
+      }
     });
   </script>
 </body>

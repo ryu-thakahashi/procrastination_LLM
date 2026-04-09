@@ -14,7 +14,10 @@
       "Bash(.venv/Scripts/python.exe -m pip install click uvicorn google-generativeai fastapi python-dotenv tenacity)",
       "Bash(.venv/Scripts/python.exe -m pip install google-genai)",
       "Bash(timeout 5 .venv/Scripts/python.exe -c \"from services.procrastination import *\")",
-      "Bash(curl -s http://127.0.0.1:8000/)"
+      "Bash(curl -s http://127.0.0.1:8000/)",
+      "Bash(python:*)",
+      "Bash(curl -X POST http://localhost:8000/api/suggest-causes -H \"Content-Type: application/json\" -d '{\"task_name\": \"論文執筆\"}')",
+      "Bash(pkill:*)"
     ]
   }
 }

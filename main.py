@@ -42,7 +42,6 @@ app.add_middleware(
 
 class TaskRequest(BaseModel):
     task_name: str
-    task_desc: str
 
 
 class ReportRequest(BaseModel):
@@ -63,12 +62,12 @@ async def get_suggest_causes(request: TaskRequest):
     """タスク情報をもとに先延ばし原因を5つ提案する。
 
     Args:
-        request: タスク名とタスク説明を含むリクエスト。
+        request: タスク名を含むリクエスト。
 
     Returns:
         先延ばし原因のリスト。
     """
-    causes_raw = await asyncio.to_thread(suggest_causes, request.task_name, request.task_desc)
+    causes_raw = await asyncio.to_thread(suggest_causes, request.task_name)
     return {"causes_raw": causes_raw}
 
 
