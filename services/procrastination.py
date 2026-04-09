@@ -2,8 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
-from google import genai
-from google.genai import types
+import google.genai as genai
 
 load_dotenv(find_dotenv())
 
@@ -44,25 +43,7 @@ def _split_prompt(prompt_key: str) -> tuple[str, str]:
 
 def initialize_caches() -> None:
     """全プロンプトの静的部分をGeminiにキャッシュする。サーバー起動時に呼び出す。"""
-    for prompt_key in _PROMPT_CACHES:
-        static_part, _ = _split_prompt(prompt_key)
-        if len(static_part) < _CACHE_CHAR_THRESHOLD:
-            print(f"[cache] {prompt_key}: スキップ（{len(static_part)}文字、閾値未満）")
-            continue
-        try:
-            cache = _GEMINI_CLIENT.caches.create(
-                model=GEMINI_MODEL,
-                config=types.CreateCachedContentConfig(
-                    system_instruction=types.Content(
-                        parts=[types.Part.from_text(static_part)]
-                    ),
-                    ttl="86400s",
-                ),
-            )
-            _PROMPT_CACHES[prompt_key] = cache.name
-            print(f"[cache] {prompt_key}: キャッシュ作成 → {cache.name}")
-        except Exception as e:
-            print(f"[cache] {prompt_key}: 作成失敗 ({e})、フォールバックを使用")
+    pass
 
 
 def suggest_causes(task_name: str, task_desc: str) -> str:
@@ -159,22 +140,8 @@ def _get_gemini_response_cached(prompt_key: str, dynamic_content: str) -> str:
     Returns:
         Geminiのレスポンステキスト。
     """
-    cache_name = _PROMPT_CACHES.get(prompt_key)
-    if cache_name is None:
-        static_part, _ = _split_prompt(prompt_key)
-        return _get_gemini_response(static_part + "\n\n" + dynamic_content)
-    try:
-        response = _GEMINI_CLIENT.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=dynamic_content,
-            config=types.GenerateContentConfig(cached_content=cache_name),
-        )
-        return response.text
-    except Exception as e:
-        print(f"[cache] {prompt_key}: キャッシュヒット失敗 ({e})、フォールバック")
-        _PROMPT_CACHES[prompt_key] = None
-        static_part, _ = _split_prompt(prompt_key)
-        return _get_gemini_response(static_part + "\n\n" + dynamic_content)
+    static_part, _ = _split_prompt(prompt_key)
+    return _get_gemini_response(static_part + "\n\n" + dynamic_content)
 
 
 def _save_if_needed(text: str, save_dir: Path | None, filename: str) -> None:
