@@ -12,7 +12,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from services.procrastination import analyze_task, generate_report, generate_task_strategy, initialize_caches, suggest_causes
 
-USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -20,8 +19,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """サーバー起動時にGeminiプロンプトキャッシュを初期化する。"""
-    if not USE_MOCK:
-        await asyncio.to_thread(initialize_caches)
+    await asyncio.to_thread(initialize_caches)
     yield
 
 
@@ -70,17 +68,6 @@ async def get_suggest_causes(request: TaskRequest):
     Returns:
         先延ばし原因のリスト。
     """
-    if USE_MOCK:
-        import json as _json
-        mock_causes = {
-            "タスクの解像度": "論文を書き終えるまでに必要なタスクを正確に把握できていない",
-            "感情的なハードル": "完成した時に受けるフィードバックが怖い",
-            "報酬優先": "他にもっと楽しいタスクがあるので、手を付けようと思わない",
-            "対人要因": "指導教員や共著者等との連絡が面倒",
-            "コンディション": "疲れ等によって、体のコンディションが整っていない",
-            "タスク粒度が粗い": "やらなきゃいけないタスクはわかっているが、そのタスクを完了させるまでが長い",
-        }
-        return {"causes_raw": _json.dumps({"causes": mock_causes}, ensure_ascii=False)}
     causes_raw = await asyncio.to_thread(suggest_causes, request.task_name, request.task_desc)
     return {"causes_raw": causes_raw}
 
@@ -95,34 +82,24 @@ async def create_report(request: ReportRequest):
 
     async def event_stream():
         """レポート生成の進捗をSSEで逐次配信するジェネレータ。"""
-        if USE_MOCK:
-            for step, message in [
-                ("analyzing", "タスクを分析しています..."),
-                ("strategizing", "先延ばし対策を考えています..."),
-                ("reporting", "レポートを作成しています..."),
-            ]:
-                yield _format_sse_event(step, message)
-                await asyncio.sleep(0.4)
-            report = _load_latest_report()
-        else:
-            save_dir = OUTPUT_DIR / time.strftime("%Y%m%d-%H%M%S")
+        save_dir = OUTPUT_DIR / time.strftime("%Y%m%d-%H%M%S")
 
-            yield _format_sse_event("analyzing", "タスクを分析しています...")
-            await asyncio.sleep(0)
+        yield _format_sse_event("analyzing", "タスクを分析しています...")
+        await asyncio.sleep(0)
 
-            task_analysis = await asyncio.to_thread(
-                analyze_task, request.task_name, request.task_desc, save_dir, request.selected_cause
-            )
+        task_analysis = await asyncio.to_thread(
+            analyze_task, request.task_name, request.task_desc, save_dir, request.selected_cause
+        )
 
-            yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
-            await asyncio.sleep(0)
+        yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
+        await asyncio.sleep(0)
 
-            task_strategy = await asyncio.to_thread(generate_task_strategy, task_analysis, save_dir)
+        task_strategy = await asyncio.to_thread(generate_task_strategy, task_analysis, save_dir)
 
-            yield _format_sse_event("reporting", "レポートを作成しています...")
-            await asyncio.sleep(0)
+        yield _format_sse_event("reporting", "レポートを作成しています...")
+        await asyncio.sleep(0)
 
-            report = await asyncio.to_thread(generate_report, task_strategy, save_dir)
+        report = await asyncio.to_thread(generate_report, task_strategy, save_dir)
 
         yield f"data: {json.dumps({'step': 'done', 'report': report}, ensure_ascii=False)}\n\n"
 
