@@ -17,7 +17,9 @@
       "Bash(curl -s http://127.0.0.1:8000/)",
       "Bash(python:*)",
       "Bash(curl -X POST http://localhost:8000/api/suggest-causes -H \"Content-Type: application/json\" -d '{\"task_name\": \"論文執筆\"}')",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(echo \"Server started. PID: $!\" sleep 2 ps aux)",
+      "Bash(curl -s -X POST http://localhost:8000/api/suggest-causes -H 'Content-Type: application/json' -d '{\"task_name\":\"テスト\"}')"
     ]
   }
 }

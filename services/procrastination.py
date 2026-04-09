@@ -14,6 +14,7 @@ PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 _SPLIT_MARKERS: dict[str, str] = {
     "suggest_causes": "## タスク情報",
+    "suggest_descriptions": "## タスク情報",
     "analyze_task": "## タスク情報",
     "generate_task_strategy": "## タスク情報",
     "generate_report": "## 入力データ",
@@ -58,6 +59,21 @@ def suggest_causes(task_name: str) -> str:
     _, tmpl = _split_prompt("suggest_causes")
     dynamic = tmpl.format(task_name=task_name)
     return _get_gemini_response_cached("suggest_causes", dynamic)
+
+
+def suggest_descriptions(task_name: str, selected_cause: str) -> str:
+    """タスク名と原因をもとに、タスク説明候補をGeminiから取得し、生テキストで返す。
+
+    Args:
+        task_name: タスク名。
+        selected_cause: ユーザーが選択した先延ばし原因。
+
+    Returns:
+        Geminiのレスポンス文字列（JSONテキスト）。
+    """
+    _, tmpl = _split_prompt("suggest_descriptions")
+    dynamic = tmpl.format(task_name=task_name, selected_cause=selected_cause)
+    return _get_gemini_response_cached("suggest_descriptions", dynamic)
 
 
 def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "") -> str:

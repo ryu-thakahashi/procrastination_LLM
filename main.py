@@ -10,7 +10,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from services.procrastination import analyze_task, generate_report, generate_task_strategy, initialize_caches, suggest_causes
+from services.procrastination import (
+    analyze_task,
+    generate_report,
+    generate_task_strategy,
+    initialize_caches,
+    suggest_causes,
+    suggest_descriptions,
+)
 
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -44,6 +51,11 @@ class TaskRequest(BaseModel):
     task_name: str
 
 
+class DescriptionRequest(BaseModel):
+    task_name: str
+    selected_cause: str
+
+
 class ReportRequest(BaseModel):
     task_name: str
     task_desc: str
@@ -69,6 +81,22 @@ async def get_suggest_causes(request: TaskRequest):
     """
     causes_raw = await asyncio.to_thread(suggest_causes, request.task_name)
     return {"causes_raw": causes_raw}
+
+
+@app.post("/api/suggest-descriptions")
+async def get_suggest_descriptions(request: DescriptionRequest):
+    """タスク名と原因をもとに、タスク説明候補を5つ提案する。
+
+    Args:
+        request: タスク名と原因を含むリクエスト。
+
+    Returns:
+        タスク説明候補のリスト。
+    """
+    descriptions_raw = await asyncio.to_thread(
+        suggest_descriptions, request.task_name, request.selected_cause
+    )
+    return {"descriptions_raw": descriptions_raw}
 
 
 @app.post("/api/report")

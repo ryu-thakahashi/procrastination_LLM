@@ -388,21 +388,40 @@
 
     <!-- Task Description -->
     <div id="descCard" class="hidden card p-6 mb-5 fade-in">
-      <div class="mb-5">
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">タスクの説明</label>
-        <p class="text-xs text-slate-400 mb-2">原因を参考にしながら、先延ばしの状況を自由に記述してください。</p>
-        <textarea
-          id="taskDesc"
-          rows="4"
-          placeholder="例：締め切りが近いのに論文に手をつけられない。何から始めればいいかわからず..."
-          class="input-field w-full px-4 py-2.5 text-sm resize-none"
-        ></textarea>
-        <p class="text-xs text-slate-400 mt-1">Ctrl + Enter でも送信できます</p>
+      <!-- ローディング -->
+      <div id="descLoading" class="hidden text-sm text-slate-400 text-center py-4">説明候補を生成中...</div>
+
+      <!-- 候補リスト -->
+      <div id="descListWrapper" class="hidden">
+        <p class="text-sm font-semibold text-slate-700 mb-1">タスクの説明を選んでください</p>
+        <p class="text-xs text-slate-400 mb-4">最も当てはまる状況を選ぶと、より的確なレポートが生成されます。</p>
+        <div id="descList" class="space-y-2.5 mb-4"></div>
+
+        <!-- 「その中にない場合は自由記述」カード -->
+        <div id="freeTextCard" class="cause-card w-full" onclick="selectFreeText()">
+          <div class="cause-radio"><div class="cause-radio-inner"></div></div>
+          <div>
+            <p class="text-xs font-semibold text-blue-600 mb-0.5">その中にない場合は自由記述</p>
+            <p class="text-sm text-slate-700">自分の言葉でタスクの状況を説明する</p>
+          </div>
+        </div>
+
+        <!-- 自由記述テキストエリア（隠し → freeTextCard選択時に表示） -->
+        <div id="freeTextArea" class="hidden mt-3">
+          <textarea
+            id="taskDesc"
+            rows="4"
+            placeholder="例：締め切りが近いのに論文に手をつけられない。何から始めればいいかわからず..."
+            class="input-field w-full px-4 py-2.5 text-sm resize-none"
+          ></textarea>
+          <p class="text-xs text-slate-400 mt-1">Ctrl + Enter でも送信できます</p>
+        </div>
       </div>
+
       <button
         id="reportBtn"
         onclick="generateReport()"
-        class="btn-primary w-full py-2.5"
+        class="btn-primary w-full py-2.5 mt-5"
         disabled
       >
         レポートを作成する
@@ -446,6 +465,8 @@
 
   <script>
     let selectedCause = '';
+    let selectedDesc = '';
+    let isFreeText = false;
 
     async function suggestCauses() {
       const taskName = document.getElementById('taskName').value.trim();
@@ -464,6 +485,8 @@
       hide('reportCard');
       hide('errorCard');
       selectedCause = '';
+      selectedDesc = '';
+      isFreeText = false;
 
       try {
         const response = await fetch('/api/suggest-causes', {
@@ -508,6 +531,25 @@
       document.getElementById('nextBtn').disabled = true;
     }
 
+    function renderDescriptions(descriptions) {
+      const list = document.getElementById('descList');
+      list.innerHTML = '';
+      descriptions.forEach((desc, i) => {
+        const card = document.createElement('button');
+        card.className = 'cause-card w-full';
+        card.innerHTML = `
+          <div class="cause-radio"><div class="cause-radio-inner"></div></div>
+          <div>
+            <p class="text-xs font-semibold text-blue-600 mb-0.5">候補 ${i + 1}</p>
+            <p class="text-sm text-slate-700">${desc}</p>
+          </div>
+        `;
+        card.addEventListener('click', () => selectDescription(card, desc));
+        list.appendChild(card);
+      });
+      document.getElementById('reportBtn').disabled = true;
+    }
+
     function selectCause(card, cause) {
       document.querySelectorAll('.cause-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
@@ -515,15 +557,58 @@
       document.getElementById('nextBtn').disabled = false;
     }
 
-    function showDescCard() {
-      show('descCard');
-      document.getElementById('descCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    function selectDescription(card, desc) {
+      document.querySelectorAll('#descList .cause-card, #freeTextCard').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedDesc = desc;
+      isFreeText = false;
+      hide('freeTextArea');
+      document.getElementById('reportBtn').disabled = false;
+    }
+
+    function selectFreeText() {
+      document.querySelectorAll('#descList .cause-card, #freeTextCard').forEach(c => c.classList.remove('selected'));
+      document.getElementById('freeTextCard').classList.add('selected');
+      isFreeText = true;
+      show('freeTextArea');
       document.getElementById('taskDesc').focus();
+      const val = document.getElementById('taskDesc').value.trim();
+      document.getElementById('reportBtn').disabled = !val;
+    }
+
+    async function showDescCard() {
+      show('descCard');
+      show('descLoading');
+      hide('descListWrapper');
+      document.getElementById('descCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      try {
+        const response = await fetch('/api/suggest-descriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task_name: document.getElementById('taskName').value.trim(), selected_cause: selectedCause }),
+        });
+
+        if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);
+
+        const data = await response.json();
+        const raw = data.descriptions_raw.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '').trim();
+        const descriptions = JSON.parse(raw).descriptions;
+        renderDescriptions(descriptions);
+        hide('descLoading');
+        show('descListWrapper');
+      } catch (e) {
+        showError(e.message || 'エラーが発生しました。');
+        hide('descCard');
+      }
     }
 
     async function generateReport() {
       const taskName = document.getElementById('taskName').value.trim();
-      const taskDesc = document.getElementById('taskDesc').value.trim();
+      let taskDesc = selectedDesc;
+      if (isFreeText) {
+        taskDesc = document.getElementById('taskDesc').value.trim();
+      }
 
       if (!selectedCause) {
         showError('原因を1つ選択してください。');
@@ -531,7 +616,7 @@
       }
 
       if (!taskDesc) {
-        showError('タスクの説明を入力してください。');
+        showError('タスクの説明を選択または入力してください。');
         return;
       }
 
@@ -702,7 +787,7 @@
     if (taskDescEl) {
       taskDescEl.addEventListener('input', () => {
         const reportBtn = document.getElementById('reportBtn');
-        if (reportBtn) {
+        if (reportBtn && isFreeText) {
           reportBtn.disabled = !taskDescEl.value.trim();
         }
       });
