@@ -139,3 +139,8 @@ def _load_latest_report() -> str:
                 text = text[:-3]
             return text.strip()
     return "# レポートが見つかりませんでした\n`output/` に `03_report.md` がありません。"
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
