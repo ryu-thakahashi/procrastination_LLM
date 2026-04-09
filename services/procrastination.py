@@ -43,7 +43,7 @@ def _split_prompt(prompt_key: str) -> tuple[str, str]:
 
 def initialize_caches() -> None:
     """全プロンプトの静的部分をGeminiにキャッシュする。サーバー起動時に呼び出す。"""
-    print("[cache] google.genai ライブラリでのキャッシュ初期化をスキップ（フォールバックモード）")
+    pass
 
 
 def suggest_causes(task_name: str) -> str:
