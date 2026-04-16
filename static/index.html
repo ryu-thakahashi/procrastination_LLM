@@ -534,13 +534,13 @@
     function renderDescriptions(descriptions) {
       const list = document.getElementById('descList');
       list.innerHTML = '';
-      descriptions.forEach((desc, i) => {
+      Object.entries(descriptions).forEach(([key, desc]) => {
         const card = document.createElement('button');
         card.className = 'cause-card w-full';
         card.innerHTML = `
           <div class="cause-radio"><div class="cause-radio-inner"></div></div>
           <div>
-            <p class="text-xs font-semibold text-blue-600 mb-0.5">候補 ${i + 1}</p>
+            <p class="text-xs font-semibold text-blue-600 mb-0.5">${key}</p>
             <p class="text-sm text-slate-700">${desc}</p>
           </div>
         `;
