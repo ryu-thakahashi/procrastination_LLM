@@ -466,6 +466,7 @@
   <script>
     let selectedCause = '';
     let selectedDesc = '';
+    let selectedDescKey = '';
     let isFreeText = false;
 
     async function suggestCauses() {
@@ -486,6 +487,7 @@
       hide('errorCard');
       selectedCause = '';
       selectedDesc = '';
+      selectedDescKey = '';
       isFreeText = false;
 
       try {
@@ -544,7 +546,7 @@
             <p class="text-sm text-slate-700">${desc}</p>
           </div>
         `;
-        card.addEventListener('click', () => selectDescription(card, desc));
+        card.addEventListener('click', () => selectDescription(card, key, desc));
         list.appendChild(card);
       });
       document.getElementById('reportBtn').disabled = true;
@@ -557,9 +559,10 @@
       document.getElementById('nextBtn').disabled = false;
     }
 
-    function selectDescription(card, desc) {
+    function selectDescription(card, key, desc) {
       document.querySelectorAll('#descList .cause-card, #freeTextCard').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
+      selectedDescKey = key;
       selectedDesc = desc;
       isFreeText = false;
       hide('freeTextArea');
@@ -633,7 +636,7 @@
         const response = await fetch('/api/report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task_name: taskName, task_desc: taskDesc, selected_cause: selectedCause }),
+          body: JSON.stringify({ task_name: taskName, task_desc: taskDesc, description_key: selectedDescKey, selected_cause: selectedCause }),
         });
 
         if (!response.ok) throw new Error(`サーバーエラー: ${response.status}`);

@@ -76,7 +76,7 @@ def suggest_descriptions(task_name: str, selected_cause: str) -> str:
     return _get_gemini_response_cached("suggest_descriptions", dynamic)
 
 
-def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "") -> str:
+def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "", description_key: str = "") -> str:
     """タスクを分析してAIの応答を返す。
 
     Args:
@@ -84,12 +84,13 @@ def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, s
         task_desc: タスクの説明。
         save_dir: 結果の保存先ディレクトリ。Noneの場合は保存しない。
         selected_cause: ユーザーが選択した先延ばし原因。空文字の場合は無視する。
+        description_key: ユーザーが選択した説明キー（e.g., "評価懸念"）。空文字の場合は無視する。
 
     Returns:
         タスク分析結果のテキスト。
     """
     _, tmpl = _split_prompt("analyze_task")
-    dynamic = tmpl.format(task_name=task_name, task_desc=task_desc, selected_cause=selected_cause)
+    dynamic = tmpl.format(task_name=task_name, task_desc=task_desc, selected_cause=selected_cause, description_key=description_key)
     response = _get_gemini_response_cached("analyze_task", dynamic)
     _save_if_needed(response, save_dir, "01_task_analysis.md")
     return response

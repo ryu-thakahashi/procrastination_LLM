@@ -59,6 +59,7 @@ class DescriptionRequest(BaseModel):
 class ReportRequest(BaseModel):
     task_name: str
     task_desc: str
+    description_key: str = ""
     selected_cause: str
 
 
@@ -115,7 +116,7 @@ async def create_report(request: ReportRequest):
         await asyncio.sleep(0)
 
         task_analysis = await asyncio.to_thread(
-            analyze_task, request.task_name, request.task_desc, save_dir, request.selected_cause
+            analyze_task, request.task_name, request.task_desc, save_dir, request.selected_cause, request.description_key
         )
 
         yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
