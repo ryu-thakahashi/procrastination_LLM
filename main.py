@@ -100,7 +100,7 @@ def _setup_static_files(app: FastAPI) -> None:
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-async def _root() -> HTMLResponse:
+async def _root() -> str:
     """トップページのHTMLを返す。
 
     Returns:

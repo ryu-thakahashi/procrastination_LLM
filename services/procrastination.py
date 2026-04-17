@@ -8,15 +8,10 @@ load_dotenv(find_dotenv())
 
 GEMINI_API = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = "gemini-2.5-flash"
-
-if not GEMINI_API:
-    raise ValueError(
-        "環境変数 GOOGLE_API_KEY が設定されていません。.env ファイルに GOOGLE_API_KEY を設定してください。"
-    )
-
-_GEMINI_CLIENT = genai.Client(api_key=GEMINI_API)
-
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+# キャッシュ判定の文字数閾値（この数以上の静的部分を持つプロンプトはキャッシュする）
+_CACHE_CHAR_THRESHOLD = 2000
 
 _SPLIT_MARKERS: dict[str, str] = {
     "suggest_causes": "## タスク情報",
@@ -26,9 +21,24 @@ _SPLIT_MARKERS: dict[str, str] = {
     "generate_report": "## 入力データ",
 }
 
-_CACHE_CHAR_THRESHOLD = 2000
-
 _PROMPT_CACHES: dict[str, str | None] = {k: None for k in _SPLIT_MARKERS}
+
+_GEMINI_CLIENT: genai.Client | None = None
+
+
+def _validate_gemini_api() -> None:
+    """Gemini APIキーを検証し、クライアントを初期化する。
+
+    Raises:
+        ValueError: GOOGLE_API_KEY環境変数が設定されていない場合。
+    """
+    global _GEMINI_CLIENT
+    if not GEMINI_API:
+        raise ValueError(
+            "環境変数 GOOGLE_API_KEY が設定されていません。"
+            ".env ファイルに GOOGLE_API_KEY を設定してください。"
+        )
+    _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API)
 
 
 def _split_prompt(prompt_key: str) -> tuple[str, str]:
@@ -48,9 +58,62 @@ def _split_prompt(prompt_key: str) -> tuple[str, str]:
     return text[:idx].rstrip(), text[idx:]
 
 
+def _get_gemini_response(contents: str) -> str:
+    """Gemini APIにリクエストを送り、レスポンスを返す（キャッシュなし）。
+
+    Args:
+        contents: Geminiに送るプロンプト文字列。
+
+    Returns:
+        Geminiのレスポンステキスト。
+    """
+    global _GEMINI_CLIENT
+    if _GEMINI_CLIENT is None:
+        _validate_gemini_api()
+    assert _GEMINI_CLIENT is not None
+    response = _GEMINI_CLIENT.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=contents,
+    )
+    return response.text
+
+
+def _get_gemini_response_cached(prompt_key: str, dynamic_content: str) -> str:
+    """キャッシュを利用してGeminiにリクエストする。キャッシュ未設定時はフォールバック。
+
+    Args:
+        prompt_key: プロンプトキー（_PROMPT_CACHES のキー）。
+        dynamic_content: ユーザー固有の動的コンテンツ。
+
+    Returns:
+        Geminiのレスポンステキスト。
+    """
+    static_part, _ = _split_prompt(prompt_key)
+    return _get_gemini_response(static_part + "\n\n" + dynamic_content)
+
+
+def _save_if_needed(text: str, save_dir: Path | None, filename: str) -> None:
+    """保存先が指定されている場合のみ、テキストをファイルに保存する。
+
+    Args:
+        text: 保存するテキスト。
+        save_dir: 保存先ディレクトリ。Noneの場合は何もしない。
+        filename: 保存するファイル名。
+    """
+    if save_dir is None:
+        return
+    save_path = save_dir / filename
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path.write_text(text, encoding="utf-8")
+
+
 def initialize_caches() -> None:
-    """全プロンプトの静的部分をGeminiにキャッシュする。サーバー起動時に呼び出す。"""
-    pass
+    """サーバー起動時に Gemini API を初期化する。
+
+    Gemini APIキーを検証してクライアントを初期化し、以降のAPI呼び出しが
+    正常に実行できる状態を整える。
+    """
+    _validate_gemini_api()
 
 
 def suggest_causes(task_name: str) -> str:
@@ -83,7 +146,11 @@ def suggest_descriptions(task_name: str, selected_cause: str) -> str:
 
 
 def analyze_task(
-    task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "", description_key: str = ""
+    task_name: str,
+    task_desc: str,
+    save_dir: Path | None = None,
+    selected_cause: str = "",
+    description_key: str = "",
 ) -> str:
     """タスクを分析してAIの応答を返す。
 
@@ -99,7 +166,10 @@ def analyze_task(
     """
     _, tmpl = _split_prompt("analyze_task")
     dynamic = tmpl.format(
-        task_name=task_name, task_desc=task_desc, selected_cause=selected_cause, description_key=description_key
+        task_name=task_name,
+        task_desc=task_desc,
+        selected_cause=selected_cause,
+        description_key=description_key,
     )
     response = _get_gemini_response_cached("analyze_task", dynamic)
     _save_if_needed(response, save_dir, "01_task_analysis.md")
@@ -138,48 +208,3 @@ def generate_report(task_strategy: str, save_dir: Path | None = None) -> str:
     response = _get_gemini_response_cached("generate_report", dynamic)
     _save_if_needed(response, save_dir, "03_report.md")
     return response
-
-
-def _get_gemini_response(contents: str) -> str:
-    """Gemini APIにリクエストを送り、レスポンスを返す（キャッシュなし）。
-
-    Args:
-        contents: Geminiに送るプロンプト文字列。
-
-    Returns:
-        Geminiのレスポンステキスト。
-    """
-    response = _GEMINI_CLIENT.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=contents,
-    )
-    return response.text
-
-
-def _get_gemini_response_cached(prompt_key: str, dynamic_content: str) -> str:
-    """キャッシュを利用してGeminiにリクエストする。キャッシュ未設定時はフォールバック。
-
-    Args:
-        prompt_key: プロンプトキー（_PROMPT_CACHES のキー）。
-        dynamic_content: ユーザー固有の動的コンテンツ。
-
-    Returns:
-        Geminiのレスポンステキスト。
-    """
-    static_part, _ = _split_prompt(prompt_key)
-    return _get_gemini_response(static_part + "\n\n" + dynamic_content)
-
-
-def _save_if_needed(text: str, save_dir: Path | None, filename: str) -> None:
-    """保存先が指定されている場合のみ、テキストをファイルに保存する。
-
-    Args:
-        text: 保存するテキスト。
-        save_dir: 保存先ディレクトリ。Noneの場合は何もしない。
-        filename: 保存するファイル名。
-    """
-    if save_dir is None:
-        return
-    save_path = save_dir / filename
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    save_path.write_text(text, encoding="utf-8")
