@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,56 +21,96 @@ from services.procrastination import (
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 STATIC_DIR = Path(__file__).parent / "static"
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """サーバー起動時にGeminiプロンプトキャッシュを初期化する。"""
-    await asyncio.to_thread(initialize_caches)
-    yield
-
-
-app = FastAPI(title="先延ばし防止レポート生成AI", lifespan=lifespan)
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://procrastination-llm.onrender.com",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+ALLOWED_ORIGINS = [
+    "https://procrastination-llm.onrender.com",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
 
 
 class TaskRequest(BaseModel):
+    """タスク名のみを含むリクエスト。"""
+
     task_name: str
 
 
 class DescriptionRequest(BaseModel):
+    """タスク名と先延ばし原因を含むリクエスト。"""
+
     task_name: str
     selected_cause: str
 
 
 class ReportRequest(BaseModel):
+    """レポート生成に必要なタスク情報を含むリクエスト。"""
+
     task_name: str
     task_desc: str
     description_key: str = ""
     selected_cause: str
 
 
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    """トップページのHTMLを返す。"""
+def main() -> FastAPI:
+    """FastAppアプリケーションを作成・セットアップして返す。
+
+    Returns:
+        セットアップ完了したFastAppインスタンス。
+    """
+    app = FastAPI(title="先延ばし防止レポート生成AI", lifespan=_lifespan)
+    _setup_middleware(app)
+    _setup_static_files(app)
+    _setup_routes(app)
+    return app
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """サーバーのライフサイクルを管理するコンテキスト。
+
+    サーバー起動時にGeminiプロンプトキャッシュを初期化する。
+
+    Args:
+        app: FastAppインスタンス。
+    """
+    await asyncio.to_thread(initialize_caches)
+    yield
+
+
+def _setup_middleware(app: FastAPI) -> None:
+    """CORSミドルウェアを設定する。
+
+    Args:
+        app: セットアップ対象のFastAppインスタンス。
+    """
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def _setup_static_files(app: FastAPI) -> None:
+    """静的ファイルのマウントを設定する。
+
+    Args:
+        app: セットアップ対象のFastAppインスタンス。
+    """
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+async def _root() -> HTMLResponse:
+    """トップページのHTMLを返す。
+
+    Returns:
+        index.htmlのコンテンツ。
+    """
     with open(STATIC_DIR / "index.html", encoding="utf-8") as f:
         return f.read()
 
 
-@app.post("/api/suggest-causes")
-async def get_suggest_causes(request: TaskRequest):
+async def _get_suggest_causes(request: TaskRequest) -> dict:
     """タスク情報をもとに先延ばし原因を5つ提案する。
 
     Args:
@@ -84,8 +123,7 @@ async def get_suggest_causes(request: TaskRequest):
     return {"causes_raw": causes_raw}
 
 
-@app.post("/api/suggest-descriptions")
-async def get_suggest_descriptions(request: DescriptionRequest):
+async def _get_suggest_descriptions(request: DescriptionRequest) -> dict:
     """タスク名と原因をもとに、タスク説明候補を5つ提案する。
 
     Args:
@@ -100,38 +138,65 @@ async def get_suggest_descriptions(request: DescriptionRequest):
     return {"descriptions_raw": descriptions_raw}
 
 
-@app.post("/api/report")
-async def create_report(request: ReportRequest):
+async def _create_report(request: ReportRequest) -> StreamingResponse:
     """タスク情報をもとにレポートを生成し、Server-Sent Eventsで進捗と結果を返す。
 
     Args:
         request: タスク名とタスク説明を含むリクエスト。
+
+    Returns:
+        SSE形式のストリーミングレスポンス。
     """
 
     async def event_stream():
         """レポート生成の進捗をSSEで逐次配信するジェネレータ。"""
         save_dir = OUTPUT_DIR / time.strftime("%Y%m%d-%H%M%S")
 
-        yield _format_sse_event("analyzing", "タスクを分析しています...")
-        await asyncio.sleep(0)
+        try:
+            yield _format_sse_event("analyzing", "タスクを分析しています...")
+            await asyncio.sleep(0)
 
-        task_analysis = await asyncio.to_thread(
-            analyze_task, request.task_name, request.task_desc, save_dir, request.selected_cause, request.description_key
-        )
+            task_analysis = await asyncio.to_thread(
+                analyze_task,
+                request.task_name,
+                request.task_desc,
+                save_dir,
+                request.selected_cause,
+                request.description_key,
+            )
 
-        yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
-        await asyncio.sleep(0)
+            yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
+            await asyncio.sleep(0)
 
-        task_strategy = await asyncio.to_thread(generate_task_strategy, task_analysis, save_dir)
+            task_strategy = await asyncio.to_thread(
+                generate_task_strategy, task_analysis, save_dir
+            )
 
-        yield _format_sse_event("reporting", "レポートを作成しています...")
-        await asyncio.sleep(0)
+            yield _format_sse_event("reporting", "レポートを作成しています...")
+            await asyncio.sleep(0)
 
-        report = await asyncio.to_thread(generate_report, task_strategy, save_dir)
+            report = await asyncio.to_thread(generate_report, task_strategy, save_dir)
 
-        yield f"data: {json.dumps({'step': 'done', 'report': report}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'step': 'done', 'report': report}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            error_msg = f"処理中にエラーが発生しました: {type(e).__name__}"
+            yield _format_sse_event("error", error_msg)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _setup_routes(app: FastAPI) -> None:
+    """APIエンドポイントを設定する。
+
+    Args:
+        app: セットアップ対象のFastAppインスタンス。
+    """
+    app.get("/")(lambda: _root())
+    app.post("/api/suggest-causes")(lambda request: _get_suggest_causes(request))
+    app.post("/api/suggest-descriptions")(
+        lambda request: _get_suggest_descriptions(request)
+    )
+    app.post("/api/report")(lambda request: _create_report(request))
 
 
 def _format_sse_event(step: str, message: str) -> str:
@@ -150,25 +215,8 @@ def _format_sse_event(step: str, message: str) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _load_latest_report() -> str:
-    """最新のレポートファイルを読み込んで返す。
-
-    Returns:
-        最新レポートのテキスト。存在しない場合はエラーメッセージ。
-    """
-    dirs = sorted(OUTPUT_DIR.glob("*/"), reverse=True)
-    for d in dirs:
-        report_file = d / "03_report.md"
-        if report_file.exists():
-            text = report_file.read_text(encoding="utf-8").strip()
-            if text.startswith("```"):
-                text = text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            return text.strip()
-    return "# レポートが見つかりませんでした\n`output/` に `03_report.md` がありません。"
-
-
 if __name__ == "__main__":
     import uvicorn
+
+    app = main()
     uvicorn.run(app, host="127.0.0.1", port=8000)

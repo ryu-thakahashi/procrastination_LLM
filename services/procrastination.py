@@ -1,13 +1,19 @@
 import os
 from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
 import google.genai as genai
+from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
 
 GEMINI_API = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL = "gemini-2.5-flash"
+
+if not GEMINI_API:
+    raise ValueError(
+        "環境変数 GOOGLE_API_KEY が設定されていません。.env ファイルに GOOGLE_API_KEY を設定してください。"
+    )
+
 _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API)
 
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -76,7 +82,9 @@ def suggest_descriptions(task_name: str, selected_cause: str) -> str:
     return _get_gemini_response_cached("suggest_descriptions", dynamic)
 
 
-def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "", description_key: str = "") -> str:
+def analyze_task(
+    task_name: str, task_desc: str, save_dir: Path | None = None, selected_cause: str = "", description_key: str = ""
+) -> str:
     """タスクを分析してAIの応答を返す。
 
     Args:
@@ -90,7 +98,9 @@ def analyze_task(task_name: str, task_desc: str, save_dir: Path | None = None, s
         タスク分析結果のテキスト。
     """
     _, tmpl = _split_prompt("analyze_task")
-    dynamic = tmpl.format(task_name=task_name, task_desc=task_desc, selected_cause=selected_cause, description_key=description_key)
+    dynamic = tmpl.format(
+        task_name=task_name, task_desc=task_desc, selected_cause=selected_cause, description_key=description_key
+    )
     response = _get_gemini_response_cached("analyze_task", dynamic)
     _save_if_needed(response, save_dir, "01_task_analysis.md")
     return response
