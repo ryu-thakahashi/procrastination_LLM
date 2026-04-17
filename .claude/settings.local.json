@@ -19,7 +19,26 @@
       "Bash(curl -X POST http://localhost:8000/api/suggest-causes -H \"Content-Type: application/json\" -d '{\"task_name\": \"論文執筆\"}')",
       "Bash(pkill:*)",
       "Bash(echo \"Server started. PID: $!\" sleep 2 ps aux)",
-      "Bash(curl -s -X POST http://localhost:8000/api/suggest-causes -H 'Content-Type: application/json' -d '{\"task_name\":\"テスト\"}')"
+      "Bash(curl -s -X POST http://localhost:8000/api/suggest-causes -H 'Content-Type: application/json' -d '{\"task_name\":\"テスト\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/api/suggest-causes -H 'Content-Type: application/json' -d '{\"task_name\":\"論文執筆\"}')",
+      "Bash(awk '{print $2}')",
+      "Bash(xargs kill:*)",
+      "Bash(curl -v -X POST http://localhost:8000/api/suggest-causes -H 'Content-Type: application/json' -d '{\"task_name\":\"論文\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/api/suggest-causes -H 'Content-Type: application/json' -d '{\"task_name\":\"test\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/api/suggest-descriptions -H 'Content-Type: application/json' -d '{\"task_name\":\"論文\",\"selected_cause\":\"タスクの解像度: 論文を書くために必要なタスクが明確でない\"}')",
+      "Bash(uv run:*)",
+      "Bash(curl -s http://localhost:8000)",
+      "Bash(taskkill /IM python.exe /F)",
+      "Bash(curl -s http://localhost:8000/api/suggest-causes -X POST -H \"Content-Type: application/json\" -d '{\"task_name\": \"テスト\"}')",
+      "Bash(curl -s -w \"\\\\n%{http_code}\\\\n\" http://localhost:8000)",
+      "Bash(.venv/Scripts/pip.exe list:*)",
+      "Bash(\".venv/Scripts/python.exe\" -m pip list)",
+      "Bash(uv sync:*)",
+      "Bash(\".venv/Scripts/python.exe\" main.py)",
+      "Bash(\".venv/Scripts/python.exe\" -m pip install google-genai)",
+      "Bash(netstat -ano)",
+      "Read(//tmp/**)",
+      "Bash(taskkill /F /IM python.exe)"
     ]
   }
 }

@@ -100,14 +100,14 @@ def _setup_static_files(app: FastAPI) -> None:
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-async def _root() -> str:
+async def _root() -> HTMLResponse:
     """トップページのHTMLを返す。
 
     Returns:
-        index.htmlのコンテンツ。
+        index.htmlのコンテンツをHTMLResponseでラップしたもの。
     """
     with open(STATIC_DIR / "index.html", encoding="utf-8") as f:
-        return f.read()
+        return HTMLResponse(f.read())
 
 
 async def _get_suggest_causes(request: TaskRequest) -> dict:
@@ -132,9 +132,7 @@ async def _get_suggest_descriptions(request: DescriptionRequest) -> dict:
     Returns:
         タスク説明候補のリスト。
     """
-    descriptions_raw = await asyncio.to_thread(
-        suggest_descriptions, request.task_name, request.selected_cause
-    )
+    descriptions_raw = await asyncio.to_thread(suggest_descriptions, request.task_name, request.selected_cause)
     return {"descriptions_raw": descriptions_raw}
 
 
@@ -168,9 +166,7 @@ async def _create_report(request: ReportRequest) -> StreamingResponse:
             yield _format_sse_event("strategizing", "先延ばし対策を考えています...")
             await asyncio.sleep(0)
 
-            task_strategy = await asyncio.to_thread(
-                generate_task_strategy, task_analysis, save_dir
-            )
+            task_strategy = await asyncio.to_thread(generate_task_strategy, task_analysis, save_dir)
 
             yield _format_sse_event("reporting", "レポートを作成しています...")
             await asyncio.sleep(0)
@@ -191,12 +187,10 @@ def _setup_routes(app: FastAPI) -> None:
     Args:
         app: セットアップ対象のFastAppインスタンス。
     """
-    app.get("/")(lambda: _root())
-    app.post("/api/suggest-causes")(lambda request: _get_suggest_causes(request))
-    app.post("/api/suggest-descriptions")(
-        lambda request: _get_suggest_descriptions(request)
-    )
-    app.post("/api/report")(lambda request: _create_report(request))
+    app.add_api_route("/", _root, methods=["GET"])
+    app.add_api_route("/api/suggest-causes", _get_suggest_causes, methods=["POST"])
+    app.add_api_route("/api/suggest-descriptions", _get_suggest_descriptions, methods=["POST"])
+    app.add_api_route("/api/report", _create_report, methods=["POST"])
 
 
 def _format_sse_event(step: str, message: str) -> str:

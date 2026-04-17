@@ -35,8 +35,7 @@ def _validate_gemini_api() -> None:
     global _GEMINI_CLIENT
     if not GEMINI_API:
         raise ValueError(
-            "環境変数 GOOGLE_API_KEY が設定されていません。"
-            ".env ファイルに GOOGLE_API_KEY を設定してください。"
+            "環境変数 GOOGLE_API_KEY が設定されていません。" ".env ファイルに GOOGLE_API_KEY を設定してください。"
         )
     _GEMINI_CLIENT = genai.Client(api_key=GEMINI_API)
 
